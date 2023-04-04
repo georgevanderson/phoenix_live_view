@@ -53,6 +53,54 @@ defmodule Phoenix.LiveView.Channel do
     {:ok, Process.monitor(pid)}
   end
 
+  def handle_info({:component_reload, graph_name}, %{socket: socket} = state) do
+    component_reload(graph_name, state)
+    # {:noreply, state}
+  end
+
+  defp component_reload(graph_name, state) do
+    %{components: {comps, _, _}} = state
+    # GEORGE figure out if this needs to be a reduce, right now we will just do one
+    cids =
+      for {key, {TimshelWeb.GraphComponent, _, %{component: %{id: ^graph_name}}, _, _}} <- comps,
+          into: [] do
+        key
+      end
+
+    if(cids != []) do
+      cid = List.first(cids)
+      component_reload_event(state, cid, nil)
+    else
+      {:noreply, state}
+    end
+  end
+
+  defp component_reload_event(state, cid, ref) do
+    %{socket: socket, components: components} = state
+
+    result =
+      Diff.reload_component(socket, cid, components, fn component_socket, component ->
+        {component_socket, {nil, %{}}}
+      end)
+
+    # Due to race conditions, the browser can send a request for a
+    # component ID that no longer exists. So we need to check for
+    # the :error case accordingly.
+    case result do
+      {diff, new_components, {redirected, flash}} ->
+        new_state = %{state | components: new_components}
+
+        if redirected do
+          handle_redirect(new_state, redirected, flash, nil, {diff, ref})
+        else
+          {:noreply, push_diff(new_state, diff, nil)}
+        end
+
+      :error ->
+        {:noreply, push_noop(state, ref)}
+    end
+  end
+
   @impl true
   def handle_info({Phoenix.Channel, auth_payload, from, phx_socket}, ref) do
     Process.demonitor(ref)
@@ -1042,6 +1090,7 @@ defmodule Phoenix.LiveView.Channel do
         rescue
           exception ->
             status = Plug.Exception.status(exception)
+
             if status >= 400 and status < 500 do
               GenServer.reply(from, {:error, %{reason: "reload", status: status}})
               {:stop, :shutdown, :no_state}

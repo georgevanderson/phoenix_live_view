@@ -189,6 +189,43 @@ defmodule Phoenix.LiveView.Diff do
     end
   end
 
+  def reload_component(socket, cid, components, fun) when is_integer(cid) do
+    # TODO GEORGE WHERE COMPONENTS ARE WRITTEN
+    # We need to extract the original cid_to_component for maybe_reuse_static later
+    {cid_to_component, _, _} = components
+
+    case cid_to_component do
+      %{^cid => {component, id, assigns, private, fingerprints}} ->
+        {component_socket, extra} =
+          socket
+          |> configure_socket_for_component(assigns, private, fingerprints)
+          |> fun.(component)
+
+        {pending, cdiffs, components} =
+          render_component(
+            component_socket,
+            component,
+            id,
+            cid,
+            true,
+            %{},
+            cid_to_component,
+            %{},
+            components
+          )
+
+        {cdiffs, components} =
+          render_pending_components(socket, pending, %{}, cid_to_component, cdiffs, components)
+
+        diff = maybe_put_reply(%{}, component_socket)
+        {diff, cdiffs} = extract_events({diff, cdiffs})
+        {Map.put(diff, @components, cdiffs), components, extra}
+
+      %{} ->
+        :error
+    end
+  end
+
   @doc """
   Execute the `fun` with the component `cid` with the given `socket` as template.
 
