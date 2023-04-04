@@ -54,6 +54,7 @@ defmodule Phoenix.LiveView.Channel do
   end
 
   def handle_info({:component_reload, graph_name}, %{socket: socket} = state) do
+    IO.puts("component_reload: #{graph_name}")
     component_reload(graph_name, state)
     # {:noreply, state}
   end
@@ -66,6 +67,8 @@ defmodule Phoenix.LiveView.Channel do
           into: [] do
         key
       end
+
+    IO.inspect(cids, label: "cids")
 
     if(cids != []) do
       cid = List.first(cids)
@@ -83,6 +86,7 @@ defmodule Phoenix.LiveView.Channel do
         {component_socket, {nil, %{}}}
       end)
 
+    IO.inspect(result, label: "result")
     # Due to race conditions, the browser can send a request for a
     # component ID that no longer exists. So we need to check for
     # the :error case accordingly.
